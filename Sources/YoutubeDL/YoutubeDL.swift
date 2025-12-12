@@ -261,11 +261,11 @@ open class YoutubeDL: NSObject {
         pendingDownloads.first { $0.transcodePending }?.directory
     }
     
-    public override init() {
-        super.init()
+    // public override init() {
+    //     super.init()
         
-        _ = postDownloadTask
-    }
+    //     _ = postDownloadTask
+    // }
     
     func loadPythonModule(downloadPythonModule: Bool = true) async throws -> PythonObject {
         if Py_IsInitialized() == 0 {
@@ -331,37 +331,19 @@ open class YoutubeDL: NSObject {
     lazy var popenHandler = PythonFunction { args in
         print(#function, args)
         let popen = args[0]
-        var result = Array<String?>(repeating: nil, count: 2)
-        if var args: [String] = Array(args[1][0]) {
-            // save standard out/error
-            let stdout = dup(STDOUT_FILENO)
-            let stderr = dup(STDERR_FILENO)
-            
-            // redirect standard out/error
-            let outPipe = Pipe()
-            let errPipe = Pipe()
-            dup2(outPipe.fileHandleForWriting.fileDescriptor, STDOUT_FILENO)
-            dup2(errPipe.fileHandleForWriting.fileDescriptor, STDERR_FILENO)
-            
+        let result = Array<String?> (repeating:nil, count:2)
+        
+        if  let args: [String] = Array(args[1][0]) {
             let exitCode = self.handleFFmpeg(args: args)
-            
-            // restore standard out/error
-            dup2(stdout, STDOUT_FILENO)
-            dup2(stderr, STDERR_FILENO)
-            
             popen.returncode = PythonObject(exitCode)
             
+            // Function to read output from pipes
             func read(pipe: Pipe) -> String? {
-                guard let string = String(data: pipe.fileHandleForReading.availableData, encoding: .utf8) else {
-                    print(#function, "not UTF-8?")
-                    return nil
-                }
-                print(#function, string)
-                return string
+                let data = pipe.fileHandleForReading.availableData
+                let output = String(data: data, encoding: .utf8)
+                return output
             }
             
-            result[0] = read(pipe: outPipe)
-            result[1] = read(pipe: errPipe)
             return Python.tuple(result)
         }
         return Python.tuple(result)
@@ -598,6 +580,22 @@ open class YoutubeDL: NSObject {
         }
         
         return (formats, try decoder.decode(Info.self, from: info))
+    }
+
+    open func getVideoInfo(url: URL) async throws -> Info? {
+        let pythonObject: PythonObject
+        if let _pythonObject = self.pythonObject {
+            pythonObject = _pythonObject
+        } else {
+            pythonObject = try await makePythonObject()
+        }
+
+        print(#function, url)
+        let info = try pythonObject.extract_info.throwing.dynamicallyCall(withKeywordArguments: ["": url.absoluteString, "download": false, "process": true])
+        print(info)
+        
+        return try PythonDecoder().decode(Info.self, from: info)
+        
     }
     
     func tryMerge(directory: URL, title: String, timeRange: TimeRange?) -> Bool {
@@ -861,7 +859,7 @@ extension URLSessionDownloadTask {
 }
 
 // https://github.com/yt-dlp/yt-dlp/blob/4f08e586553755ab61f64a5ef9b14780d91559a7/yt_dlp/YoutubeDL.py#L338
-public func yt_dlp(argv: [String], progress: (([String: PythonObject]) -> Void)? = nil, log: ((String, String) -> Void)? = nil, makeTranscodeProgressBlock: (() -> ((Double) -> Void)?)? = nil) async throws {
+public func yt_dlp(argv: [String], progress: (([String: PythonObject]) throws -> Void)? = nil, log: ((String, String) -> Void)? = nil, makeTranscodeProgressBlock: (() -> ((Double) -> Void)?)? = nil) async throws {
     let context = Context()
     let yt_dlp = try await YtDlp(context: context)
     
@@ -939,10 +937,10 @@ public func makeLogger(name: String, _ log: @escaping (String, String) -> Void) 
         .pythonObject()
 }
 
-public func makeProgressHook(_ progress: @escaping ([String: PythonObject]) -> Void) -> PythonObject {
+public func makeProgressHook(_ progress: @escaping ([String: PythonObject]) throws -> Void) -> PythonObject {
     PythonFunction { (d: PythonObject) in
         let dict: [String: PythonObject] = Dictionary(d) ?? [:]
-        progress(dict)
+       try progress(dict)
         return Python.None
     }
         .pythonObject

@@ -109,7 +109,16 @@ struct _KeyedDecodingContainer<Key: CodingKey>: KeyedDecodingContainerProtocol {
     }
     
     func decode<T>(_ type: T.Type, forKey key: Key) throws -> T where T : Decodable {
-        try T(from: _PythonDecoder(pythonObject: dict[key.stringValue]!, codingPath: codingPath + [key]))
+        guard let pythonObject = dict[key.stringValue] else {
+            throw DecodingError.keyNotFound(
+                key,
+                DecodingError.Context(
+                    codingPath: codingPath,
+                    debugDescription: "Key '\(key.stringValue)' not found."
+                )
+            )
+        }
+        return try T(from: _PythonDecoder(pythonObject: pythonObject, codingPath: codingPath + [key]))
     }
     
     func nestedContainer<NestedKey>(keyedBy type: NestedKey.Type, forKey key: Key) throws -> KeyedDecodingContainer<NestedKey> where NestedKey : CodingKey {
