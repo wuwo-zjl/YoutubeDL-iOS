@@ -423,9 +423,12 @@ open class YoutubeDL: NSObject {
     
     var willTranscode: (() -> ((Double) -> Void)?)?
     
-    func makePythonObject(_ options: PythonObject? = nil, initializePython: Bool = true) async throws -> PythonObject {
+    func makePythonObject(_ options: PythonObject? = nil, initializePython: Bool = true, cookiefile: String? = nil) async throws -> PythonObject {
         let pythonModule = try await loadPythonModule()
         let options = options ?? defaultOptions
+        if let cookiefile = cookiefile, FileManager.default.fileExists(atPath: cookiefile) {
+            options["cookiefile"] = PythonObject(cookiefile)
+        }
         pythonObject = pythonModule.YoutubeDL(options)
         self.options = options
         return pythonObject!
@@ -582,12 +585,12 @@ open class YoutubeDL: NSObject {
         return (formats, try decoder.decode(Info.self, from: info))
     }
 
-    open func getVideoInfo(url: URL) async throws -> Info? {
+    open func getVideoInfo(url: URL, cookiefile: String?) async throws -> Info? {
         let pythonObject: PythonObject
         if let _pythonObject = self.pythonObject {
             pythonObject = _pythonObject
         } else {
-            pythonObject = try await makePythonObject()
+           pythonObject = try await makePythonObject(cookiefile: cookiefile)
         }
 
         print(#function, url)
