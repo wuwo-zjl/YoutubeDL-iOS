@@ -40,7 +40,8 @@ let Py_IsInitialized: @convention(c) () -> Int32 = loadSymbol("Py_IsInitialized"
 public struct Info: Codable {
     public var id: String
     public var title: String
-    public var formats: [Format]
+    public var formats: [Format]?
+    public var entries: [Info]?
     public var description: String?
     public var upload_date: String?
     public var uploader: String?
@@ -423,11 +424,17 @@ open class YoutubeDL: NSObject {
     
     var willTranscode: (() -> ((Double) -> Void)?)?
     
-    func makePythonObject(_ options: PythonObject? = nil, initializePython: Bool = true, cookiefile: String? = nil) async throws -> PythonObject {
+    func makePythonObject(_ options: PythonObject? = nil, initializePython: Bool = true, cookiefile: String? = nil, userAgent: String? = nil, referer: String? = nil) async throws -> PythonObject {
         let pythonModule = try await loadPythonModule()
         let options = options ?? defaultOptions
         if let cookiefile = cookiefile, FileManager.default.fileExists(atPath: cookiefile) {
             options["cookiefile"] = PythonObject(cookiefile)
+        }
+        if let userAgent = userAgent {
+            options["user-agent"] = PythonObject(userAgent)
+        }
+        if let referer = referer {
+            options["referer"] = PythonObject(referer)
         }
         pythonObject = pythonModule.YoutubeDL(options)
         self.options = options
@@ -585,12 +592,12 @@ open class YoutubeDL: NSObject {
         return (formats, try decoder.decode(Info.self, from: info))
     }
 
-    open func getVideoInfo(url: URL, cookiefile: String?) async throws -> Info? {
+    open func getVideoInfo(url: URL, cookiefile: String?, userAgent: String?, referer: String?) async throws -> Info? {
         let pythonObject: PythonObject
         if let _pythonObject = self.pythonObject {
             pythonObject = _pythonObject
         } else {
-           pythonObject = try await makePythonObject(cookiefile: cookiefile)
+           pythonObject = try await makePythonObject(cookiefile: cookiefile, userAgent:userAgent, referer:referer)
         }
 
         print(#function, url)
